@@ -1,0 +1,84 @@
+Dharmit Viradia 
+10450000
+
+
+QUERY 1
+
+with 
+t1 as
+(select cust, prod, state, round(avg(quant),0) as cust_avg from sales group by cust, prod, state),
+
+t2 as
+(select t1.cust, t1.prod, t1.state, t1.cust_avg, round(avg(s.quant),0) as  other_state_avg from t1, sales as s where t1.cust = s.cust and t1.prod = s.prod and t1.state != s.state group by t1.cust, t1.prod, t1.state, t1.cust_avg),
+
+t3 as
+(select t1.cust, t1.prod, t1.state, t1.cust_avg, round(avg(s.quant),0) as other_prod_avg from t1, sales as s where t1.cust = s.cust and t1.state = s.state and t1.prod != s.prod group by t1.cust, t1.prod, t1.state, t1.cust_avg)
+
+select t1.cust as customer, t1.prod as product, t1.state, t1.cust_avg, t2.other_state_avg, t3.other_prod_avg from (t1 full outer join t2 on t1.cust=t2.cust and t1.prod=t2.prod and t1.state=t2.state) full outer join t3 on t1.cust=t3.cust and t1.prod=t3.prod and t1.state=t3.state order by t1.cust,t1.prod,t1.state
+
+
+
+Query 2
+
+with q1 as
+(select cust, prod, round(avg(quant),0) as quant from sales where month between 1 and 3 group by cust, prod), 
+
+q2 as 
+(select cust, prod, round(avg(quant),0) as quant from sales where month between 4 and 6 group by cust, prod),
+
+q3 as 
+(select cust, prod, round(avg(quant),0) as quant from sales where month between 7 and 9 group by cust, prod), 
+
+q4 as 
+(select cust, prod, round(avg(quant),0) as quant from sales where month between 10 and 12 group by cust, prod), 
+
+base as
+(select cust, prod from sales group by cust, prod), 
+
+t1 as 
+( select b.cust, b.prod, cast('1' as int) as q, cast(null as numeric) as before_avg, q2.quant as after_avg from base as b left join q2 using(cust, prod)), 
+
+t2 as 
+(select b.cust, b.prod, cast('2' as int) as q, q1.quant as before_avg, q3.quant as after_avg from base as b left join q1 using(cust, prod) left join q3 using(cust, prod)), 
+
+t3 as 
+(select b.cust, b.prod, cast('3' as int) as q, q2.quant as before_avg, q4.quant as after_avg from base as b left join q2 using(cust, prod) left join q4 using(cust, prod)), 
+
+t4 as 
+(select b.cust, b.prod, cast('4' as int) as q, q3.quant as before_avg, cast(null as numeric) as after_avg from base as b left join q3 using(cust, prod)),
+
+t5 as
+(select * from t1 union select * from t2 union select * from t3 union select * from t4)
+
+select * from t5 order by cust,prod,q
+
+QUERY 3
+
+with 
+t1 as
+(select prod, quant from sales order by prod, quant),
+
+t2 as
+(select prod, round((count(quant)/2)+1) as median from t1 group by prod order by prod),
+
+t3 as
+(select a.prod, a.quant, count(b.quant) from t1 as a join t1 as b on b.quant <= a.quant and a.prod = b.prod group by a.prod, a.quant order by a.prod, a.quant)
+
+select t3.prod as product, t3.quant as "median quant" from t3 join t2 on t3.prod = t2.prod and t3.count = t2.median
+
+QUERY 4
+
+with 
+t1 as 
+(select cust, prod, month, sum(quant) from sales group by cust, prod, month order by cust, prod, month),
+
+t2 as 
+(select cust, prod, sum(sum) from t1 group by cust, prod),
+
+t3 as 
+(select a.cust, a.prod, a.month, a.sum, sum(b.sum) as running_sum from t1 as a join t1 as b on b.month <= a.month and a.cust = b.cust and a.prod = b.prod group by a.cust, a.prod, a.month, a.sum order by cust, prod, month), 
+
+t4 as 
+(select a.cust, a.prod, a.month from t3 as a, t2 as b where a.cust = b.cust and a.prod = b.prod and a.running_sum >= (2.0/3.0 * b.sum) order by cust, prod, month)
+
+select cust, prod, min(month) as "2/3 purchased by month" from t4 group by cust, prod order by cust, prod
